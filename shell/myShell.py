@@ -1,39 +1,72 @@
-import os, sys, re
+#!/usr/bin/env python3
 
-while (True):
-    cmd = input(f'{os.getcwd()} $ ').split()
-    if len(cmd) == 0:
-        continue
-    # exit
-    elif len(cmd) == 1 and cmd[0] == "exit":
-        print("\tExiting; bye bye")
-        sys.exit(0)
-    # Change directory
-    elif cmd[0] == "cd":
-        if len(cmd) == 2:
-            try:
-                os.chdir(cmd[1])
-            except FileNotFoundError:
-                print(f'\tNo such directory {cmd[1]}')
-            continue
-        print("\tCD only takes one directory")
-    # execute a command
-    else:
-        print("\tchild FORKED..")
-        child = os.fork()
-        if (child < 0):
-            os.write(2, ("fork fail %d\n" % child).enconde())
-            sys.exit(1)
-        elif (child == 0):
-            for dir in re.split(":", os.environ['PATH']):
-                program = "%s/%s" % (dir, cmd[0])
+import os,sys,re
+import subprocess
+
+def execute_command(command):
+    try:
+        if "|" in command:
+            # save for restoring later on
+            s_in, s_out = (0, 0)
+            s_in = os.dup(0)
+            s_out = os.dup(1)
+
+            # first command takes commandut from stdin
+            fdin = os.dup(s_in)
+
+            # iterate over all the commands that are piped
+            for cmd in command.split("|"):
+                # fdin will be stdin if it's the first iteration
+                # and the readable end of the pipe if not.
+                os.dup2(fdin, 0)
+                os.close(fdin)
+
+                # restore stdout if this is the last command
+                if cmd == command.split("|")[-1]:
+                    fdout = os.dup(s_out)
+                else:
+                    fdin, fdout = os.pipe()
+
+                # redirect stdout to pipe
+                os.dup2(fdout, 1)
+                os.close(fdout)
+
                 try:
-                    os.execve(program, cmd, os.environ)
-                except FileNotFoundError:
-                    pass
-            os.write(2, ("Could not execute line %s\n" % cmd[0]).encode())
-            sys.exit(1)
-        else:
-            os.wait()
+                    subprocess.run(cmd.strip().split())
+                except Exception:
+                    print("command error: {}".format(cmd.strip()))
 
-            os.write(1, ("\tIM THE PARENT HERE\n").encode())
+            # restore stdout and stdin
+            os.dup2(s_in, 0)
+            os.dup2(s_out, 1)
+            os.close(s_in)
+            os.close(s_out)
+        else:
+            subprocess.run(command.split(" "))
+    except Exception:
+        print("command not found: {}".format(command))
+
+
+def psh_cd(path):
+    #convert to absolute path and change directory
+    try:
+        os.chdir(os.path.abspath(path))
+    except Exception:
+        print("cd: no such file or directory: {}".format(path))
+    except PermissionError:
+        print("Permision Error")
+    except NotADirectoryError:
+        print("Not A Directory")
+
+def main():
+    while True:
+        inp = input("$ ")
+        if inp == "exit":
+            break
+        elif inp[:3] == "cd ":
+            psh_cd(inp[3:])
+        else:
+            execute_command(inp)
+
+if '__main__' == __name__:
+    main()

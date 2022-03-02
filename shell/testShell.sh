@@ -1,6 +1,6 @@
 #set -x
 if [ -z $1 ] ; then 
-    echo "Usage: $0 [myShell]" >&2
+    echo "Usage: $0 [exShell]" >&2
     exit 1
 fi
 myShell=$1
